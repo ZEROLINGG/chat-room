@@ -1,0 +1,282 @@
+<!-- templates/chat.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>聊天室</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .chat-container {
+            display: flex;
+            height: 80vh;
+        }
+        .user-list {
+            width: 200px;
+            background: #f0f2f5;
+            padding: 10px;
+            margin-right: 20px;
+            border-radius: 8px;
+        }
+        .chat-box {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .messages {
+            flex-grow: 1;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 10px;
+            overflow-y: auto;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 8px;
+            background: #f0f2f5;
+            border-radius: 8px;
+        }
+        .message img {
+            max-width: 100%;     /* 图片宽度最大为其容器宽度 */
+            max-height: 300px;   /* 图片的最大高度为300px */
+            border-radius: 4px;
+            margin: 8px 0;
+            object-fit: contain; /* 保持图片的高宽比，适应容器 */
+        }
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+        #message-input {
+            flex-grow: 1;
+            padding: 8px;
+        }
+        .file-upload {
+            position: relative;
+            overflow: hidden;
+        }
+        .file-upload input[type=file] {
+            position: absolute;
+            font-size: 100px;
+            right: 0;
+            top: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #1877f2;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .download-btn {
+            width: 10%;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background-color: #f0f2f5;
+            color: #f0f2f5;
+            padding: 6px 12px;
+            border-radius: 4px;
+            text-decoration: none;
+            margin-top: 5px;
+            font-size: 14px;
+        }
+        .download-btn:hover {
+            background-color: #45a049;
+        }
+        .file-container {
+            margin: 8px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 5px;
+        }
+        .file-icon {
+            font-size: 20px;
+        }
+        .file-name {
+            color: #1877f2;
+            word-break: break-all;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const socket = io();
+            const messagesDiv = document.querySelector('.messages');
+            const messageInput = document.getElementById('message-input');
+            const userList = document.querySelector('.user-list');
+            const fileInput = document.getElementById('file-input');
+
+            socket.on('message', data => {
+                const messageElement = document.createElement('div');
+                messageElement.className = 'message';
+
+                if (data.file) {
+                    // 显示文件消息
+                    const fileUrl = `/uploads/${data.file.path}`;
+                    let messageContent = `<div>${data.user}:</div>`;
+
+                    if (data.file.is_image) {
+                        // 图片文件显示
+                        messageContent += `
+                            <div class="file-container">
+                                <img src="${fileUrl}" alt="${data.file.name}">
+                                <a href="${fileUrl}" class="download-btn" download="${data.file.name}">
+                                    <span class="file-icon">📥</span> 下载图片
+                                </a>
+                            </div>
+                        `;
+                    } else {
+                        // 其他文件显示
+                        messageContent += `
+                            <div class="file-container">
+                                <div class="file-info">
+                                    <span class="file-icon">📄</span>
+                                    <span class="file-name">${data.file.name}</span>
+                                </div>
+                                <a href="${fileUrl}" class="download-btn" download="${data.file.name}">
+                                    <span class="file-icon">📥</span> 下载文件
+                                </a>
+                            </div>
+                        `;
+                    }
+                    messageElement.innerHTML = messageContent;
+                } else {
+                    // 显示普通文本消息
+                    messageElement.textContent = `${data.user}: ${data.msg}`;
+                }
+
+                messagesDiv.appendChild(messageElement);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            });
+
+            socket.on('user_list', users => {
+                userList.innerHTML = '<h3>在线用户</h3>';
+                users.forEach(user => {
+                    const userElement = document.createElement('div');
+                    userElement.textContent = user;
+                    userList.appendChild(userElement);
+                });
+            });
+
+            // 处理文件上传
+            fileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const response = await fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+
+                    if (result.error) {
+                        alert('上传失败: ' + result.error);
+                    }
+
+                    // 清除文件输入框，允许上传相同文件
+                    fileInput.value = '';
+                } catch (error) {
+                    console.error('Error uploading file:', error);
+                    alert('上传失败，请重试');
+                }
+            });
+
+            document.getElementById('send-button').addEventListener('click', () => {
+                const message = messageInput.value.trim();
+                if (message) {
+                    socket.emit('message', message);
+                    messageInput.value = '';
+                }
+            });
+
+            messageInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const message = messageInput.value.trim();
+                    if (message) {
+                        socket.emit('message', message);
+                        messageInput.value = '';
+                    }
+                }
+            });
+        });
+    </script>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="user-list">
+            <h3>在线用户</h3>
+        </div>
+        <div class="chat-box">
+            <div class="messages"></div>
+            <div class="input-area">
+                <input type="text" id="message-input" placeholder="输入消息...">
+                <button id="send-button">&#160;&#160;&#160;&#160;发送&#160;&#160;&#160;&#160;</button>
+                <div class="file-upload">
+                    <button type="button" style="background-color: darkgray">上传文件</button>
+                    <input type="file" id="file-input">
+                </div>
+
+            </div>
+        </div>
+    </div>
+<script>
+    // 在 DOMContentLoaded 事件处理函数中更新文件上传部分的代码
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // 检查文件大小
+        const maxSize = 50 * 1024 * 1024; // 50MB
+        if (file.size > maxSize) {
+            alert(`文件大小超过限制（最大 ${maxSize/1024/1024}MB）`);
+            fileInput.value = '';
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || '上传失败');
+            }
+
+            if (result.error) {
+                throw new Error(result.error);
+            }
+
+            // 清除文件输入框，允许上传相同文件
+            fileInput.value = '';
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            alert(error.message || '上传失败，请重试');
+            fileInput.value = '';
+        }
+    });
+</script>
+</body>
+</html>
